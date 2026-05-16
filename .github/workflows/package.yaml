@@ -1,0 +1,146 @@
+name: Build & Release
+
+on:
+  push:
+    # tags:
+    #   - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Install PyInstaller
+        run: uv pip install pyinstaller
+
+      - name: Build standalone binary
+        run: uv run pyinstaller --name ytdl-tui --onefile main.py
+        shell: bash
+
+      - name: Rename artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        run: mv dist/ytdl-tui.exe dist/ytdl-tui-windows-x86_64.exe
+        shell: bash
+
+      - name: Rename artifact (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: mv dist/ytdl-tui dist/ytdl-tui-linux-x86_64
+        shell: bash
+
+      - name: Build AppImage (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -eux
+
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+
+          cp dist/ytdl-tui-linux-x86_64 AppDir/usr/bin/ytdl-tui
+          chmod +x AppDir/usr/bin/ytdl-tui
+
+          cat > AppDir/usr/share/applications/ytdl-tui.desktop << 'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=ytdl-tui
+          Comment=Personal TUI video downloader
+          Exec=ytdl-tui
+          Icon=ytdl-tui
+          Terminal=true
+          Categories=Utility;Network;
+          DESKTOP
+
+          ln -sf usr/bin/ytdl-tui AppDir/AppRun
+          ln -sf usr/share/applications/ytdl-tui.desktop AppDir/ytdl-tui.desktop
+
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ./appimagetool-x86_64.AppImage AppDir ytdl-tui-linux-x86_64.AppImage
+
+      - name: Upload artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/ytdl-tui-windows-x86_64.exe
+
+      - name: Upload artifact (Linux binary)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binary
+          path: dist/ytdl-tui-linux-x86_64
+
+      - name: Upload artifact (Linux AppImage)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: ytdl-tui-linux-x86_64.AppImage
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Checkout (full history for changelog)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate changelog with git-cliff
+        uses: orhun/git-cliff-action@v4
+        id: changelog
+        with:
+          args: --latest --strip header
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.content }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            artifacts/windows-exe/ytdl-tui-windows-x86_64.exe
+            artifacts/linux-binary/ytdl-tui-linux-x86_64
+            artifacts/linux-appimage/ytdl-tui-linux-x86_64.AppImage
