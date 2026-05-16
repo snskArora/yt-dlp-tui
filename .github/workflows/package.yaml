@@ -54,7 +54,6 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: mv dist/ytdl-tui dist/ytdl-tui-linux-x86_64
         shell: bash
-
       - name: Build AppImage (Linux only)
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -63,9 +62,37 @@ jobs:
 
           mkdir -p AppDir/usr/bin
           mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
 
           cp dist/ytdl-tui-linux-x86_64 AppDir/usr/bin/ytdl-tui
           chmod +x AppDir/usr/bin/ytdl-tui
+
+          # Generate a minimal 256x256 PNG icon using Python (no extra deps)
+          python3 - << 'PYEOF'
+          import struct, zlib
+
+          def make_png(size=256, r=1, g=105, b=111):
+              def chunk(tag, data):
+                  c = zlib.crc32(tag + data) & 0xFFFFFFFF
+                  return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', c)
+              sig = b'\x89PNG\r\n\x1a\n'
+              ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0))
+              row = b'\x00' + bytes([r, g, b] * size)
+              raw = b''.join(row for _ in range(size))
+              idat = chunk(b'IDAT', zlib.compress(raw))
+              iend = chunk(b'IEND', b'')
+              return sig + ihdr + idat + iend
+
+          with open('AppDir/usr/share/icons/hicolor/256x256/apps/ytdl-tui.png', 'wb') as f:
+              f.write(make_png())
+          # Also place icon at AppDir root (required by appimagetool)
+          import shutil
+          shutil.copy(
+              'AppDir/usr/share/icons/hicolor/256x256/apps/ytdl-tui.png',
+              'AppDir/ytdl-tui.png'
+          )
+          print("Icon written")
+          PYEOF
 
           cat > AppDir/usr/share/applications/ytdl-tui.desktop << 'DESKTOP'
           [Desktop Entry]
@@ -75,7 +102,7 @@ jobs:
           Exec=ytdl-tui
           Icon=ytdl-tui
           Terminal=true
-          Categories=Utility;Network;
+          Categories=Utility;
           DESKTOP
 
           ln -sf usr/bin/ytdl-tui AppDir/AppRun
