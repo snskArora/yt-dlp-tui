@@ -9,20 +9,21 @@ A small, personal terminal UI for downloading videos using [yt-dlp](https://gith
 
 - Text-based UI with a live table of downloads
 - Per-download progress, speed, ETA, and final file size
-- Queues multiple URLs
+- Choose video + audio, audio only or video only; container (mp4, mkv, webm, mov, avi, flv) or audio format (original, mp3, m4a, opus, ogg, flac, wav, alac); video resolution and audio bitrate. Defaults to the best video quality, and your last choices are remembered
+- Runs multiple downloads at once
+- Press Enter on a download to see its full error and yt-dlp output; everything is also written to a log file
 - Uses yt-dlp under the hood for actual downloads and format selection
 
 ## Binaries
 
-Prebuilt binaries for **Windows** and **Linux (binary + AppImage)** are available on the GitHub **Releases / Packages** page for this repository.
-
-If you just want to use the tool, grab the appropriate binary for your platform from there.
+Prebuilt builds for **Windows** (`.zip`) and **Linux** (`.AppImage` and `.tar.gz`) are on the GitHub **Releases** page. They bundle ffmpeg, ffprobe and deno, so nothing else needs installing. Unzip/extract once and run `ytdl-tui` from the folder; the AppImage runs directly.
 
 ## Running from source
 
-You need a recent Python (3.14+ recommended) and `uv`.
+You need Python 3.14+ and `uv`. Install `ffmpeg` (for best quality) and `deno` (for YouTube) on your PATH.
+
 ```bash
-cd video-downloader-tui
+cd yt-dlp-tui
 uv sync
 uv run main.py
 ```
@@ -30,16 +31,20 @@ uv run main.py
 I use uv as it is faster and gives me more utilities than pip but if you want to use pip then just download the below two libs and you should be good to go.
 
 ```bash
-cd video-downloader-tui
+cd yt-dlp-tui
 python -m venv .venv
 source .venv/bin/activate (this command is for linux (i am using debian), use the command and script for your OS)
-pip install textual yt-dlp
+pip install textual "yt-dlp[default]"
 python main.py
 ```
-You can skip the second and third commadn if you dont want a virtual env for this script to run.
+You can skip the second and third command if you don't want a virtual env for this script to run.
 
+By default downloads go to `~/Downloads`. You can override the path in the UI. `main.py --check` reports whether ffmpeg, ffprobe and deno are usable.
 
-By default downloads go to `~/Downloads`. You can override the path in the UI.
+## More
+
+- [wiki.md](wiki.md): full documentation (usage, logs, bundled tools, building, CI, bumping pinned versions)
+- [ytdlp_tui/README.md](ytdlp_tui/README.md): the Python package and its modules
 
 ## License
 
